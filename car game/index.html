@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D Car Game with Pause/Play</title>
+  <style>
+    body {
+      margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #111;
+      color: white;
+    }
+    #gameOver {
+      position: fixed;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 30px 50px;
+      font-size: 2em;
+      border-radius: 10px;
+      display: none;
+      z-index: 10;
+      text-align: center;
+    }
+    #score {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      font-size: 1.5em;
+      font-weight: bold;
+      z-index: 10;
+    }
+    #restartBtn, #pauseBtn, #playBtn {
+      position: fixed;
+      top: 10px;
+      padding: 10px 20px;
+      font-size: 1em;
+      background: #0a74da;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 10;
+    }
+    #restartBtn { right: 10px; }
+    #pauseBtn { right: 110px; }
+    #playBtn { right: 110px; display: none; }
+    #restartBtn:hover, #pauseBtn:hover, #playBtn:hover {
+      background: #095bb5;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+<div id="score">Score: 0</div>
+<button id="restartBtn">Restart Game</button>
+<button id="pauseBtn">Pause</button>
+<button id="playBtn">Play</button>
+<div id="gameOver">Game Over!<br>Refresh or press Restart.</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+<script>
+  let scene, camera, renderer;
+  let playerCar, enemyCars = [];
+  let keys = { ArrowLeft: false, ArrowRight: false };
+  const lateralSpeed = 0.2;
+  const forwardSpeed = 0.3;
+  let gameOver = false;
+  let paused = false;
+  let score = 0;
+
+  const scoreDiv = document.getElementById('score');
+  const gameOverDiv = document.getElementById('gameOver');
+  const restartBtn = document.getElementById('restartBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const playBtn = document.getElementById('playBtn');
+  const enemyCount = 5;
+
+  const loader = new THREE.TextureLoader();
+
+  function init() {
+    gameOver = false;
+    paused = false;
+    score = 0;
+    scoreDiv.textContent = 'Score: 0';
+    gameOverDiv.style.display = 'none';
+    pauseBtn.style.display = 'inline-block';
+    playBtn.style.display = 'none';
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+
+    camera = new THREE.PerspectiveCamera(
+      75, window.innerWidth / window.innerHeight, 0.1, 1000
+    );
+    camera.position.set(0, 10, 20);
+    camera.lookAt(0, 0, 0);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const existingCanvas = document.querySelector('canvas');
+    if (existingCanvas) existingCanvas.remove();
+
+    document.body.appendChild(renderer.domElement);
+
+    const groundGeometry = new THREE.PlaneGeometry(50, 100);
+    const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x228B22 });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    scene.add(ground);
+
+    const carGeometry = new THREE.BoxGeometry(2, 1, 4);
+    const playerTexture = loader.load('https://i.imgur.com/NhDn17O.png');
+    const playerMaterial = new THREE.MeshPhongMaterial({ map: playerTexture });
+    playerCar = new THREE.Mesh(carGeometry, playerMaterial);
+    playerCar.position.set(0, 0.5, 0);
+    scene.add(playerCar);
+
+    enemyCars = [];
+    const enemyTexture = loader.load('https://i.imgur.com/v0vQpKX.png');
+    for (let i = 0; i < enemyCount; i++) {
+      const enemyMaterial = new THREE.MeshPhongMaterial({ map: enemyTexture });
+      const enemy = new THREE.Mesh(carGeometry, enemyMaterial);
+      enemy.position.set((Math.random() * 20) - 10, 0.5, -20 * i - 30);
+      scene.add(enemy);
+      enemyCars.push(enemy);
+    }
+
+    const ambientLight = new THREE.AmbientLight(0xcccccc, 0.6);
+    scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(10, 20, 10);
+    scene.add(directionalLight);
+  }
+
+  function checkCollision(obj1, obj2) {
+    const box1 = new THREE.Box3().setFromObject(obj1);
+    const box2 = new THREE.Box3().setFromObject(obj2);
+    return box1.intersectsBox(box2);
+  }
+
+  function endGame() {
+    gameOver = true;
+    pauseBtn.style.display = 'none';
+    playBtn.style.display = 'none';
+    gameOverDiv.style.display = 'block';
+  }
+
+  function animate() {
+    if (gameOver || paused) return;
+
+    requestAnimationFrame(animate);
+
+    if (keys.ArrowLeft && playerCar.position.x > -20) {
+      playerCar.position.x -= lateralSpeed;
+    }
+    if (keys.ArrowRight && playerCar.position.x < 20) {
+      playerCar.position.x += lateralSpeed;
+    }
+
+    playerCar.position.z -= forwardSpeed;
+
+    score = Math.floor(-playerCar.position.z);
+    scoreDiv.textContent = `Score: ${score}`;
+
+    enemyCars.forEach(enemy => {
+      enemy.position.z += forwardSpeed;
+
+      if (enemy.position.z > playerCar.position.z + 20) {
+        enemy.position.z = playerCar.position.z - (Math.random() * 100 + 50);
+        enemy.position.x = (Math.random() * 20) - 10;
+      }
+
+      if (checkCollision(playerCar, enemy)) {
+        endGame();
+      }
+    });
+
+    camera.position.z = playerCar.position.z + 20;
+    camera.position.x += (playerCar.position.x - camera.position.x) * 0.1;
+    camera.lookAt(playerCar.position);
+
+    renderer.render(scene, camera);
+  }
+
+  // Keyboard listeners
+  window.addEventListener('keydown', e => {
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+  });
+  window.addEventListener('keyup', e => {
+    if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+  });
+
+  restartBtn.addEventListener('click', () => {
+    if (!gameOver) return;
+    init();
+    animate();
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    paused = true;
+    pauseBtn.style.display = 'none';
+    playBtn.style.display = 'inline-block';
+  });
+
+  playBtn.addEventListener('click', () => {
+    if (!paused) return;
+    paused = false;
+    playBtn.style.display = 'none';
+    pauseBtn.style.display = 'inline-block';
+    animate();
+  });
+
+  window.addEventListener('resize', () => {
+    if (!camera || !renderer) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Start game
+  init();
+  animate();
+</script>
+
+</body>
+</html>
